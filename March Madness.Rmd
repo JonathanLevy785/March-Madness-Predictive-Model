@@ -1,0 +1,485 @@
+---
+title: "MarchMadness"
+author: "Jonathan_Levy"
+date: "2025-03-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load the dataset, ensuring the first row is read as headers
+data <- read.csv("March_Madness_Dataset.csv", header = TRUE)
+
+# Check the first few rows to ensure columns are correctly recognized
+head(data)
+
+```
+
+```{r}
+library(dplyr)
+library(caret)
+library(randomForest)
+
+historic_data <- data %>%
+  filter(YEAR < 2025) 
+
+training_features <- historic_data %>%
+  select(
+    K.TEMPO, K.OFF, K.DEF, OPP_K.TEMPO, OPP_K.OFF, OPP_K.DEF, SEED, OPP_SEED, OPP_WIN., WIN., BARTHAG, OPP_BARTHAG
+  )
+
+testing_features <- data %>%
+   filter(YEAR == 2025) %>%
+  select(
+    K.TEMPO, K.OFF, K.DEF, OPP_K.TEMPO, OPP_K.OFF, OPP_K.DEF, SEED, OPP_SEED, OPP_WIN., WIN., BARTHAG, OPP_BARTHAG
+  )
+
+
+# Create the target variable (game result)
+training_features$RESULT <- as.factor(ifelse(historic_data$RESULT == 1, "Win", "Loss"))
+
+
+
+
+train_data <- training_features
+test_data  <- testing_features
+
+# Build the random forest model
+model_rf <- randomForest(RESULT ~ ., data = train_data, ntree = 500)
+
+# Evaluate model performance
+predictions <- predict(model_rf, test_data)
+
+
+print(model_rf)
+print(predictions)
+
+
+# Print the confusion matrix and accuracy
+
+
+# Calculate feature importance
+importance_values <- importance(model_rf)
+
+print((importance_values))
+
+```
+
+```{r}
+library(dplyr)
+library(caret)
+library(randomForest)
+
+# Filter historical data (before 2025) for training
+historic_data <- data %>%
+  filter(YEAR < 2025) 
+
+# Select features and keep team names
+training_features <- historic_data %>%
+  select(TEAM, OPP_TEAM, K.TEMPO, K.OFF, K.DEF, OPP_K.TEMPO, OPP_K.OFF, OPP_K.DEF, 
+         SEED, OPP_SEED, OPP_WIN., WIN., BARTHAG, OPP_BARTHAG, RESULT)
+
+# Filter 2025 data for testing
+testing_features <- data %>%
+  filter(YEAR == 2025) %>%
+  select(TEAM, OPP_TEAM, K.TEMPO, K.OFF, K.DEF, OPP_K.TEMPO, OPP_K.OFF, OPP_K.DEF, 
+         SEED, OPP_SEED, OPP_WIN., WIN., BARTHAG, OPP_BARTHAG)
+
+# Create target variable (Win/Loss)
+training_features$RESULT <- as.factor(ifelse(training_features$RESULT == 1, "Win", "Loss"))
+
+# Remove team names before training the model
+train_data <- training_features %>%
+  select(-TEAM, -OPP_TEAM)
+
+test_data <- testing_features %>%
+  select(-TEAM, -OPP_TEAM)
+
+# Build the random forest model
+set.seed(123)
+model_rf <- randomForest(RESULT ~ ., data = train_data, ntree = 500)
+
+# Make predictions
+predictions <- predict(model_rf, test_data)
+
+# Add predictions back to the test dataset
+results_df <- testing_features %>%
+  mutate(Predicted_Result = predictions)
+
+# Print results with team names
+print(results_df %>% select(TEAM, OPP_TEAM, Predicted_Result))
+
+
+
+```
+
+
+
+```{r}
+
+# Get feature importance from the random forest model
+feature_importance <- importance(model_rf)
+
+# Sort the feature importance in descending order
+sorted_importance <- feature_importance[order(-feature_importance[, 1]), ]
+
+# Print the sorted feature importance
+print(sorted_importance)
+
+```
+
+
+```{r}
+library(dplyr)
+library(caret)
+library(randomForest)
+
+# Filter historical data (before 2025) for training
+historic_data <- data %>%
+  filter(YEAR < 2025) 
+
+# Select features and keep team names
+# Select TEAM, OPP_TEAM, and all numeric features for training
+training_features <- historic_data %>%
+  select(TEAM, OPP_TEAM, everything()) %>%
+  select(TEAM, OPP_TEAM, where(is.numeric)) %>%
+  select(-SEED, -OPP_SEED, -ROUND, -OPP_ROUND)
+
+# Filter 2025 data for testing and select TEAM, OPP_TEAM, and all numeric features
+MM2025 <- read.csv("MM_2025.csv")
+
+testing_features <- data %>%
+  filter(YEAR == 2025) %>%
+  select(TEAM, OPP_TEAM, everything()) %>%
+  select(TEAM, OPP_TEAM, where(is.numeric)) %>%
+  select(-SEED, -OPP_SEED, -ROUND, -OPP_ROUND )
+
+
+# Create target variable (Win/Loss)
+training_features$RESULT <- as.factor(ifelse(training_features$RESULT == 1, "Win", "Loss"))
+
+# Remove team names before training the model
+train_data <- training_features %>%
+  select(-TEAM, -OPP_TEAM)
+
+test_data <- testing_features %>%
+  select(-TEAM, -OPP_TEAM)
+
+# Build the random forest model
+set.seed(123)
+model_rf <- randomForest(RESULT ~ ., data = train_data, ntree = 500)
+
+# Predict probabilities instead of just win/loss
+prob_predictions <- predict(model_rf, test_data, type = "prob")
+
+# Add probabilities back to the test dataset
+results_df <- testing_features %>%
+  mutate(Win_Probability = prob_predictions[, "Win"],
+         Loss_Probability = prob_predictions[, "Loss"]) %>%
+  arrange(desc(Win_Probability))  # Sort by win probability (highest first)
+
+
+
+# Get the confusion matrix for your model
+conf_matrix <- model_rf$confusion
+
+# Extract the correct predictions (diagonal elements of the confusion matrix)
+correct_predictions <- sum(diag(conf_matrix))
+
+# Get the total number of observations
+total_predictions <- sum(conf_matrix)
+
+# Calculate the accuracy
+accuracy <- correct_predictions / total_predictions
+print(paste("Model Accuracy: ", round(accuracy * 100, 2), "%"))
+
+
+
+# Print sorted results
+print(results_df %>% select(TEAM, OPP_TEAM, Win_Probability))
+
+```
+
+```{r}
+predict_matchup_from_df <- function(team1, team2, predictions_df) {
+  # Ensure predictions_df is a tibble or data frame
+  predictions_df <- as.data.frame(predictions_df)
+
+  # Search for the matchup in predictions_df
+  matchup <- predictions_df %>%
+    filter((TEAM == team1 & OPP_TEAM == team2) | (TEAM == team2 & OPP_TEAM == team1)) %>%
+    head(1)  # Ensure only one instance is used
+
+  # If matchup is found
+  if (nrow(matchup) > 0) {
+    # Extract win probabilities
+    win_prob_team1 <- matchup$Win_Probability
+    win_prob_team2 <- matchup$Loss_Probability  # Since one team's win is the other's loss
+
+    # Determine the predicted winner correctly
+    if (win_prob_team1 > win_prob_team2) {
+      predicted_winner <- matchup$TEAM
+    } else {
+      predicted_winner <- matchup$OPP_TEAM
+    }
+
+    # Print results
+    cat(paste("Predicted Win Probability for", matchup$TEAM, ":", round(win_prob_team1, 2), "\n"))
+    cat(paste("Predicted Win Probability for", matchup$OPP_TEAM, ":", round(win_prob_team2, 2), "\n"))
+    cat(paste(predicted_winner, "is predicted to win!\n"))
+    
+    return(matchup)
+  } else {
+    cat("Matchup not found in predictions_df.\n")
+    return(NULL)
+  }
+}
+
+# Example usage:
+predict_matchup_from_df("Colorado St.", "Memphis", results_df)
+
+
+```
+
+
+```{r}
+# List of teams from the bracket (68 teams)
+teams_list <- c("Alabama State", "Saint Francis", "North Carolina", "San Diego State", 
+                "Louisville", "Creighton", "Purdue", "High Point", "Wisconsin", "Montana",
+                "Houston", "SIU Edwardsville", "Auburn", "McNeese", "Clemson", "BYU", 
+                "VCU", "Gonzaga", "Georgia", "Tennessee", "Wofford", "Kansas", "Arkansas",
+                "Texas A&M", "Yale", "Missouri", "Drake", "UCLA", "Utah State", "St. John's", 
+                "Omaha", "Michigan", "UC San Diego", "Texas Tech", "UNC Wilmington", 
+                "Mississippi State", "Baylor", "Alabama", "Robert Morris", "Iowa State", 
+                "Lipscomb", "Memphis", "Colorado State", "Duke", "Mount St. Mary's", 
+                "Saint Mary's", "Vanderbilt", "Mississippi", "North Carolina", "San Diego State", 
+                "Maryland", "Grand Canyon", "Florida", "Norfolk State", "Kentucky", "Troy", 
+                "Marquette", "New Mexico", "Arizona", "Akron", "UConn", "Oklahoma", "Illinois", 
+                "Michigan State", "Bryant", "Oregon", "Liberty")
+
+# Step 1: Filter the dataset for the 68 teams (both in TEAM and OPP_TEAM columns)
+team_data <- data %>%
+  filter (YEAR == 2025) %>%
+  filter(TEAM %in% teams_list | OPP_TEAM %in% teams_list) %>%
+  select(TEAM, OPP_TEAM, everything())  # Select TEAM, OPP_TEAM, and all the other columns
+
+# Step 2: Process rows where the team is in the TEAM column
+team_data_clean <- team_data %>%
+  mutate(
+    # Remove opponent-related columns when the team is in the TEAM column
+    across(starts_with("OPP"), ~ifelse(TEAM %in% teams_list, NA, .), .names = "{col}")
+  )
+
+# Step 3: Process rows where the team is in the OPP_TEAM column
+team_data_clean <- team_data_clean %>%
+  mutate(
+    # Keep only opponent-related columns when the team is in the OPP_TEAM column
+    across(starts_with("OPP"), ~ifelse(OPP_TEAM %in% teams_list, ., NA), .names = "{col}")
+  )
+
+# Step 4: Remove original opponent columns and keep only team stats (no opponent stats)
+team_data_clean <- team_data_clean %>%
+  select(-starts_with("OPP"))  # Drop all opponent-related columns
+
+# Step 5: Remove duplicate rows, keeping only one entry for each team
+unique_team_data <- team_data_clean %>%
+  distinct(TEAM, .keep_all = TRUE)  # Keeps the first occurrence of each team
+
+# Print out the cleaned dataset with only team-specific stats
+print(unique_team_data)
+
+
+```
+
+
+
+
+```{r}
+library(dplyr)
+library(caret)
+library(xgboost)
+
+# Ensure RESULT is binary (1 for win, 0 for loss)
+data <- data %>%
+  mutate(RESULT = ifelse(RESULT == 1, 1, 0))
+
+# Filter historical data (before 2024) for training
+historic_data <- data %>%
+  filter(YEAR < 2025) 
+
+# Select numeric features only (excluding categorical columns)
+training_features <- historic_data %>%
+  select(-TEAM, -OPP_TEAM, -ROUND, -OPP_ROUND, -SEED, -OPP_SEED, -YEAR)
+
+# Ensure all columns are numeric
+training_features <- training_features %>%
+  mutate_if(is.character, as.numeric)
+
+# Extract target variable separately
+train_labels <- training_features$RESULT  
+train_data <- training_features %>% select(-RESULT)  # Remove RESULT from features
+
+# Load 2024 test dataset
+testing_features <- MM2025 %>%
+  filter(YEAR == 2025) %>%
+  select(-TEAM, -OPP_TEAM, -ROUND, -OPP_ROUND, -SEED, -OPP_SEED, -YEAR)
+
+# Ensure all test features are numeric
+testing_features <- testing_features %>%
+  mutate_if(is.character, as.numeric)
+
+# Remove RESULT from test set (since we’re predicting it)
+actual_results <- testing_features$RESULT  # Store actual results for accuracy
+test_data <- testing_features %>% select(-RESULT)  # Remove RESULT before predictions
+
+# Convert data to matrix format for XGBoost
+train_matrix <- as.matrix(train_data)
+test_matrix <- as.matrix(test_data)
+
+# Define XGBoost parameters
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  max_depth = 8,  
+  eta = 0.01,  
+  subsample = 0.75,  
+  colsample_bytree = 0.7,  
+  min_child_weight = 3,  
+  gamma = 0.2,  
+  lambda = 3,  
+  alpha = 1  
+)
+
+# Train XGBoost model
+set.seed(123)
+xgb_model <- xgboost(data = train_matrix, label = train_labels, params = params, nrounds = 500, verbose = 0)
+
+# Predict probabilities
+prob_predictions <- predict(xgb_model, test_matrix)
+
+# Convert probabilities to binary predictions (Win if prob > 0.5, else Loss)
+binary_predictions <- ifelse(prob_predictions > 0.5, 1, 0)
+
+# Ensure actual results are numeric
+actual_results <- as.numeric(actual_results)
+
+# Calculate accuracy
+accuracy <- mean(binary_predictions == actual_results)
+print(paste("Model Accuracy on 2024 Data:", round(accuracy * 100, 2), "%"))
+
+# Add probabilities back to test dataset and display results
+results_df <- MM2025 %>%
+  filter(YEAR == 2025) %>%
+  mutate(Win_Probability = prob_predictions,
+         Loss_Probability = 1 - prob_predictions,
+         Predicted_Result = ifelse(binary_predictions == 1, "Win", "Loss"),
+         Actual_Result = ifelse(actual_results == 1, "Win", "Loss")) %>%
+  arrange(desc(Win_Probability))
+
+# Print sorted results
+print(results_df %>% select(TEAM, OPP_TEAM, Win_Probability, Predicted_Result, Actual_Result))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(dplyr)
+library(caret)
+library(xgboost)
+
+# Filter historical data (before 2025) for training
+historic_data <- data %>%
+  filter(YEAR < 2025) 
+
+# Select features and keep team names
+# Select TEAM, OPP_TEAM, and all numeric features for training
+training_features <- historic_data %>%
+  select(TEAM, OPP_TEAM, everything()) %>%
+  select(TEAM, OPP_TEAM, where(is.numeric))
+
+# Filter 2025 data for testing and select TEAM, OPP_TEAM, and all numeric features
+MM2025 <- read.csv("MM_2025.csv")
+
+testing_features <- MM2025 %>%
+  filter(YEAR == 2025) %>%
+  select(TEAM, OPP_TEAM, everything()) %>%
+  select(TEAM, OPP_TEAM, where(is.numeric))
+
+# Create target variable (Win/Loss)
+training_features$RESULT <- as.factor(ifelse(training_features$RESULT == 1, "Win", "Loss"))
+
+# Convert target variable to binary (1 for Win, 0 for Loss)
+training_features$RESULT <- as.numeric(training_features$RESULT) - 1
+
+# Remove team names before training the model
+# Remove team names and unwanted features before training the model
+train_data <- training_features %>%
+  select(-TEAM, -OPP_TEAM, -ROUND, -OPP_ROUND, -SEED, -OPP_SEED)
+
+test_data <- testing_features %>%
+  select(-TEAM, -OPP_TEAM, -ROUND, -OPP_ROUND, -SEED, -OPP_SEED)
+
+
+# Convert data to matrix format for XGBoost
+train_matrix <- as.matrix(train_data %>% select(-RESULT))
+train_label <- train_data$RESULT
+test_matrix <- as.matrix(test_data)
+
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  max_depth = 7,  # Slightly deeper trees
+  eta = 0.05,  # Lower learning rate
+  subsample = 0.75,  # Slightly less sampling for regularization
+  colsample_bytree = 0.7,  # Less feature sampling
+  min_child_weight = 3,  # Require more samples per leaf
+  gamma = 0.2,  # Small split penalty
+  lambda = 3,  # Higher L2 regularization
+  alpha = 1  # L1 regularization to force sparsity
+)
+
+
+
+
+# Train XGBoost model
+set.seed(123)
+xgb_model <- xgboost(data = train_matrix, label = train_label, params = params, nrounds = 500, verbose = 0)
+
+# Predict probabilities using the trained model
+prob_predictions <- predict(xgb_model, test_matrix)
+
+# Add probabilities back to the test dataset
+results_df <- testing_features %>%
+  mutate(Win_Probability = prob_predictions,
+         Loss_Probability = 1 - prob_predictions) %>%
+  arrange(desc(Win_Probability))  # Sort by win probability (highest first)
+
+# Print sorted results
+print(results_df %>% select(TEAM, OPP_TEAM, Win_Probability))
+
+```
+
+
+
+
+
+
+
+
